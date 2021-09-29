@@ -44,21 +44,31 @@ class Hyperboloid(Manifold):
         K = 1. / c
         d = x.size(-1) - 1
         y = x.narrow(-1, 1, d)
-        y_sqnorm = torch.norm(y, p=2, dim=1, keepdim=True) ** 2 
+        y_sqnorm = torch.norm(y, p=2, dim=-1, keepdim=True) ** 2 
         mask = torch.ones_like(x)
-        mask[:, 0] = 0
-        vals = torch.zeros_like(x)
-        vals[:, 0:1] = torch.sqrt(torch.clamp(K + y_sqnorm, min=self.eps[x.dtype]))
+        if len(x.size()) > 2:
+            mask[:,:,0] = 0
+            vals = torch.zeros_like(x)
+            vals[:, :, 0:1] = torch.sqrt(torch.clamp(K + y_sqnorm, min=self.eps[x.dtype]))
+        else :
+            mask[:, 0] = 0
+            vals = torch.zeros_like(x)
+            vals[:, 0:1] = torch.sqrt(torch.clamp(K + y_sqnorm, min=self.eps[x.dtype]))
         return vals + mask * x
 
     def proj_tan(self, u, x, c):
         K = 1. / c
         d = x.size(1) - 1
-        ux = torch.sum(x.narrow(-1, 1, d) * u.narrow(-1, 1, d), dim=1, keepdim=True)
+        ux = torch.sum(x.narrow(-1, 1, d) * u.narrow(-1, 1, d), dim=-1, keepdim=True)
         mask = torch.ones_like(u)
-        mask[:, 0] = 0
-        vals = torch.zeros_like(u)
-        vals[:, 0:1] = ux / torch.clamp(x[:, 0:1], min=self.eps[x.dtype])
+        if len(u.size()) > 2:
+            mask[:, :, 0] = 0
+            vals = torch.zeros_like(u)
+            vals[:,:, 0:1] = ux / torch.clamp(x[:,:< 0:1], min=self.eps[x.dtype])
+        else :
+            mask[:, 0] = 0
+            vals = torch.zeros_like(u)
+            vals[:, 0:1] = ux / torch.clamp(x[:, 0:1], min=self.eps[x.dtype])
         return vals + mask * u
 
     def proj_tan0(self, u, c):
@@ -91,25 +101,35 @@ class Hyperboloid(Manifold):
         K = 1. / c
         sqrtK = K ** 0.5
         d = u.size(-1) - 1
-        x = u.narrow(-1, 1, d).view(-1, d)
-        x_norm = torch.norm(x, p=2, dim=1, keepdim=True)
+        x_norm = torch.norm(x, p=2, dim=-1, keepdim=True)
+        x = u.narrow(-1,1,d)
         x_norm = torch.clamp(x_norm, min=self.min_norm)
         theta = x_norm / sqrtK
         res = torch.ones_like(u)
-        res[:, 0:1] = sqrtK * cosh(theta)
-        res[:, 1:] = sqrtK * sinh(theta) * x / x_norm
+        if len(u.size()) > 2:
+            res[:, :,0:1] = sqrtK * cosh(theta)
+            res[:,:, 1:] = sqrtK * sinh(theta) * x / x_norm
+
+        else :
+            res[:, 0:1] = sqrtK * cosh(theta)
+            res[:, 1:] = sqrtK * sinh(theta) * x / x_norm
+
         return self.proj(res, c)
 
     def logmap0(self, x, c):
         K = 1. / c
         sqrtK = K ** 0.5
         d = x.size(-1) - 1
-        y = x.narrow(-1, 1, d).view(-1, d)
-        y_norm = torch.norm(y, p=2, dim=1, keepdim=True)
+        y = x.narrow(-1, 1, d)
+        y_norm = torch.norm(y, p=2, dim=-1, keepdim=True)
         y_norm = torch.clamp(y_norm, min=self.min_norm)
         res = torch.zeros_like(x)
-        theta = torch.clamp(x[:, 0:1] / sqrtK, min=1.0 + self.eps[x.dtype])
-        res[:, 1:] = sqrtK * arcosh(theta) * y / y_norm
+        if len(x.size())>2:
+            theta = torch.clamp(x[:,:, 0:1] / sqrtK, min=1.0 + self.eps[x.dtype])
+            res[:,:, 1:] = sqrtK * arcosh(theta) * y / y_norm
+        else :
+            theta = torch.clamp(x[:, 0:1] / sqrtK, min=1.0 + self.eps[x.dtype])
+            res[:, 1:] = sqrtK * arcosh(theta) * y / y_norm
         return res
 
     def mobius_add(self, x, y, c):
@@ -136,13 +156,19 @@ class Hyperboloid(Manifold):
         x0 = x.narrow(-1, 0, 1)
         d = x.size(-1) - 1
         y = x.narrow(-1, 1, d)
-        y_norm = torch.clamp(torch.norm(y, p=2, dim=1, keepdim=True), min=self.min_norm)
+        y_norm = torch.clamp(torch.norm(y, p=2, dim=-1, keepdim=True), min=self.min_norm)
         y_normalized = y / y_norm
         v = torch.ones_like(x)
-        v[:, 0:1] = - y_norm 
-        v[:, 1:] = (sqrtK - x0) * y_normalized
-        alpha = torch.sum(y_normalized * u[:, 1:], dim=1, keepdim=True) / sqrtK
-        res = u - alpha * v
+        if len(x.size()) > 2:
+            v[:, :, 0:1] = - y_norm 
+            v[:, :,  1:] = (sqrtK - x0) * y_normalized
+            alpha = torch.sum(y_normalized * u[:, :, 1:], dim=-1, keepdim=True) / sqrtK
+            res = u - alpha * v
+        else :
+            v[:, 0:1] = - y_norm 
+            v[:, 1:] = (sqrtK - x0) * y_normalized
+            alpha = torch.sum(y_normalized * u[:, 1:], dim=1, keepdim=True) / sqrtK
+            res = u - alpha * v
         return self.proj_tan(res, x, c)
 
     def to_poincare(self, x, c):

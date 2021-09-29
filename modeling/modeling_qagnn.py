@@ -101,10 +101,10 @@ class QAGNN_Message_Passing(nn.Module):
         # 주의 : linear mapping을 하고 나서 exp로 보내야지 linear layer의 parameter가 Eucd에 존재
 
         h_X = self.Vx(X)
-        h_X = self.hyper.expmap0(h_X, self.curvature)
+        h_X = self.hyper.expmap0(h_X, self.curvature)[-1]
         h_H = self.Vh(H)
 
-        output = self.activation(self.hyper.mobius_add(h_X, h_H, self.curvature))
+        output = self.activation(self.hyper.mobius_add(h_X, h_H, self.curvature[-1]))
         output = self.dropout(output)
 
         return output, self.curvature
@@ -185,11 +185,11 @@ class QAGNN(nn.Module):
         node_scores = node_scores.unsqueeze(2) #[batch_size, n_node, 1]
 
 
-        gnn_output, curvature = self.gnn(gnn_input, adj, node_type_ids, node_scores)
+        gnn_output, curvatures = self.gnn(gnn_input, adj, node_type_ids, node_scores)
 
         Z_vecs = gnn_output[:,0]   #(batch_size, dim_node)
         # !! : Z_vec logmapping해주기
-        Z_vecs = self.hyper.logmap0(Z_vecs, self.curvature)
+        Z_vecs = self.hyper.logmap0(Z_vecs, curvatures[-1])
 
         mask = torch.arange(node_type_ids.size(1), device=node_type_ids.device) >= adj_lengths.unsqueeze(1) #1 means masked out
 
@@ -197,7 +197,7 @@ class QAGNN(nn.Module):
         mask[mask.all(1), 0] = 0  # a temporary solution to avoid zero node
 
         sent_vecs_for_pooler = sent_vecs
-        graph_vecs, pool_attn = self.pooler(sent_vecs_for_pooler, gnn_output, curvature, mask)
+        graph_vecs, pool_attn = self.pooler(sent_vecs_for_pooler, gnn_output, curvatures[-1], mask)
 
         if cache_output:
             self.concept_ids = concept_ids
